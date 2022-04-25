@@ -21,11 +21,6 @@ package standard
 
 import (
 	"fmt"
-	"github.com/pufferpanel/pufferpanel/v2"
-	"github.com/pufferpanel/pufferpanel/v2/logging"
-	"github.com/pufferpanel/pufferpanel/v2/messages"
-	"github.com/shirou/gopsutil/process"
-	"github.com/spf13/cast"
 	"io"
 	"os"
 	"os/exec"
@@ -34,6 +29,13 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/pufferpanel/pufferpanel/v2"
+	"github.com/pufferpanel/pufferpanel/v2/logging"
+	"github.com/pufferpanel/pufferpanel/v2/messages"
+	"github.com/shirou/gopsutil/process"
+	"github.com/spf13/cast"
+	"golang.org/x/sys/windows"
 )
 
 type standard struct {
@@ -55,6 +57,15 @@ func (s *standard) standardExecuteAsync(steps pufferpanel.ExecutionData) (err er
 	s.Wait.Add(1)
 	s.mainProcess = exec.Command(steps.Command, steps.Arguments...)
 	s.mainProcess.Dir = path.Join(s.GetRootDirectory(), steps.WorkingDirectory)
+	s.mainProcess.SysProcAttr = &syscall.SysProcAttr{
+		// Prevent Ctrl+C signals sent to the console where PufferPanel
+		// is attached from propagating to spawned server processes.
+		//
+		// PufferPanel stops gracefully stops running servers on its
+		// own when it exits, so this avoids a race between PufferPanel
+		// and the server's own cleanup behavior.
+		CreationFlags: windows.CREATE_NEW_PROCESS_GROUP,
+	}
 
 	for _, v := range os.Environ() {
 		if !strings.HasPrefix(v, "PUFFER_") {
